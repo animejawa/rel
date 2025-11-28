@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Kerupuk Atom Mentai</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+    <header class="admin-header">
+        <div class="container">
+            <div class="header-content">
+                <div class="header-left">
+                    <a href="/" class="back-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 12H5M12 19l-7-7 7-7"/>
+                        </svg>
+                    </a>
+                    <div class="header-brand">
+                        <img src="/images/logo.png" alt="Logo" class="header-logo">
+                        <div>
+                            <h1>Admin Dashboard</h1>
+                            <span>Kerupuk Atom Mentai</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="admin-main">
+        <div class="container">
+            <div class="admin-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <h2>Daftar Pesanan</h2>
+                        <p>Total: <span id="totalOrders">0</span> pesanan</p>
+                    </div>
+                    <div class="card-actions">
+                        <div class="search-box">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="M21 21l-4.35-4.35"/>
+                            </svg>
+                            <input type="text" id="searchInput" placeholder="Cari nama atau telepon...">
+                        </div>
+                        <button class="btn-icon" id="refreshBtn" title="Refresh">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 4v6h-6M1 20v-6h6"/>
+                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <div id="emptyState" class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                            <line x1="12" y1="22.08" x2="12" y2="12"/>
+                        </svg>
+                        <p>Belum ada pesanan</p>
+                    </div>
+
+                    <div id="loadingState" class="loading-state" style="display: none;">
+                        <span class="loading"></span>
+                        <p>Memuat data...</p>
+                    </div>
+
+                    <div class="table-wrapper" id="tableWrapper" style="display: none;">
+                        <table class="orders-table">
+                            <thead>
+                                <tr>
+                                    <th>No</th>
+                                    <th>Nama</th>
+                                    <th>Telepon</th>
+                                    <th>Metode</th>
+                                    <th>Jumlah</th>
+                                    <th>Alamat</th>
+                                    <th>Catatan</th>
+                                    <th>Waktu Pesan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ordersTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Mobile Cards -->
+                    <div id="orderCards" class="order-cards"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/js/admin.js"></script>
+</body>
+</html>

@@ -1,98 +1,174 @@
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
-import { createServer } from "http";
+import http from 'http';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
 
-const app = express();
-const httpServer = createServer(app);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
-  }
+interface Order {
+    id: string;
+    namaLengkap: string;
+    nomorTelepon: string;
+    jumlahPesanan: number;
+    metodePengambilan: 'delivery' | 'pickup';
+    alamat: string;
+    catatan: string;
+    waktuPesan: string;
 }
 
-app.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+const orders: Order[] = [];
 
-app.use(express.urlencoded({ extended: false }));
+const mimeTypes: Record<string, string> = {
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon'
+};
 
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
+function parseBody(req: http.IncomingMessage): Promise<any> {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+            body += chunk.toString();
+        });
+        req.on('end', () => {
+            try {
+                resolve(body ? JSON.parse(body) : {});
+            } catch (e) {
+                reject(e);
+            }
+        });
+        req.on('error', reject);
+    });
 }
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+function sendJSON(res: http.ServerResponse, statusCode: number, data: any): void {
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(data));
+}
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+function serveStaticFile(res: http.ServerResponse, filePath: string): void {
+    const ext = path.extname(filePath);
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
 
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
+    fs.readFile(filePath, (err, data) => {
+        if (err) {
+            if (err.code === 'ENOENT') {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not Found');
+            } else {
+                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.end('Internal Server Error');
+            }
+            return;
+        }
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(data);
+    });
+}
 
-      log(logLine);
+function validateOrder(data: any): string[] {
+    const errors: string[] = [];
+    
+    if (!data.namaLengkap || typeof data.namaLengkap !== 'string' || data.namaLengkap.trim() === '') {
+        errors.push('Nama lengkap harus diisi');
     }
-  });
+    
+    if (!data.nomorTelepon || typeof data.nomorTelepon !== 'string' || data.nomorTelepon.length < 10) {
+        errors.push('Nomor telepon tidak valid');
+    }
+    
+    if (!data.jumlahPesanan || typeof data.jumlahPesanan !== 'number' || data.jumlahPesanan < 1) {
+        errors.push('Jumlah pesanan minimal 1');
+    }
+    
+    if (!data.metodePengambilan || !['delivery', 'pickup'].includes(data.metodePengambilan)) {
+        errors.push('Metode pengambilan tidak valid');
+    }
+    
+    if (data.metodePengambilan === 'delivery' && (!data.alamat || data.alamat.trim() === '')) {
+        errors.push('Alamat harus diisi untuk delivery');
+    }
+    
+    return errors;
+}
 
-  next();
+const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url || '/', `http://${req.headers.host}`);
+    const pathname = url.pathname;
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+    }
+
+    if (pathname === '/api/orders') {
+        if (req.method === 'GET') {
+            const sortedOrders = [...orders].sort((a, b) => 
+                new Date(b.waktuPesan).getTime() - new Date(a.waktuPesan).getTime()
+            );
+            sendJSON(res, 200, sortedOrders);
+            return;
+        }
+        
+        if (req.method === 'POST') {
+            try {
+                const data = await parseBody(req);
+                const errors = validateOrder(data);
+                
+                if (errors.length > 0) {
+                    sendJSON(res, 400, { message: errors[0], errors });
+                    return;
+                }
+                
+                const order: Order = {
+                    id: crypto.randomUUID(),
+                    namaLengkap: data.namaLengkap.trim(),
+                    nomorTelepon: data.nomorTelepon.trim(),
+                    jumlahPesanan: data.jumlahPesanan,
+                    metodePengambilan: data.metodePengambilan,
+                    alamat: data.alamat ? data.alamat.trim() : '',
+                    catatan: data.catatan ? data.catatan.trim() : '',
+                    waktuPesan: new Date().toISOString()
+                };
+                
+                orders.push(order);
+                sendJSON(res, 201, order);
+            } catch (e) {
+                sendJSON(res, 400, { message: 'Invalid JSON' });
+            }
+            return;
+        }
+    }
+
+    const publicDir = path.join(__dirname, '..', 'public');
+    let filePath = path.join(publicDir, pathname);
+    
+    if (pathname === '/adminkerupuk' || pathname === '/adminkerupuk/') {
+        filePath = path.join(publicDir, 'admin.html');
+    } else if (pathname === '/' || pathname === '') {
+        filePath = path.join(publicDir, 'index.html');
+    } else if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+        filePath = path.join(filePath, 'index.html');
+    }
+
+    serveStaticFile(res, filePath);
 });
 
-(async () => {
-  await registerRoutes(httpServer, app);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
-  }
-
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
-})();
+const PORT = process.env.PORT || 5000;
+server.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+});
